@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { syncItem } from "@/lib/sync";
 import { verifyPlaidWebhook } from "@/lib/webhook-verify";
@@ -32,7 +33,7 @@ export async function POST(req: Request) {
       plaidItemId: item?.id ?? null,
       webhookType,
       webhookCode,
-      payload,
+      payload: payload as Prisma.InputJsonValue,
       signatureVerified: true,
     },
   });

@@ -79,6 +79,10 @@ async function syncRecurring(itemId: string, accessToken: string) {
     const accountId = accountMap.get(s.account_id);
     if (!accountId) continue;
 
+    // Plaid v27 SDK type is missing `predicted_next_date` but the API does send it.
+    const predictedNextDateRaw = (s as { predicted_next_date?: string | null })
+      .predicted_next_date;
+
     const base = {
       description: s.description,
       merchantName: s.merchant_name ?? null,
@@ -87,7 +91,7 @@ async function syncRecurring(itemId: string, accessToken: string) {
       frequency: String(s.frequency),
       firstDate: new Date(s.first_date),
       lastDate: new Date(s.last_date),
-      predictedNextDate: s.predicted_next_date ? new Date(s.predicted_next_date) : null,
+      predictedNextDate: predictedNextDateRaw ? new Date(predictedNextDateRaw) : null,
       averageAmount: new Prisma.Decimal(s.average_amount.amount ?? 0),
       lastAmount: s.last_amount?.amount != null ? new Prisma.Decimal(s.last_amount.amount) : null,
       isoCurrencyCode: s.average_amount.iso_currency_code ?? null,
