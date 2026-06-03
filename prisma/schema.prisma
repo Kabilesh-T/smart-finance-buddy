@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  clerkId   String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plaidItems PlaidItem[]
+  categories Category[]
+  rules      Rule[]
+  auditLogs  AuditLog[]
+}
+
+model PlaidItem {
+  id                   String     @id @default(uuid()) @db.Uuid
+  userId               String     @db.Uuid
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItemId          String     @unique
+  encryptedAccessToken Bytes
+  institutionId        String
+  institutionName      String
+  cursor               String?
+  status               ItemStatus @default(active)
+  lastSyncedAt         DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  accounts        Account[]
+  webhookEvents   WebhookEvent[]
+  recurringStreams RecurringStream[]
+
+  @@index([userId])
+}
+
+enum ItemStatus {
+  active
+  login_required
+  error
+}
+
+model Account {
+  id               String    @id @default(uuid()) @db.Uuid
+  itemId           String    @db.Uuid
+  item             PlaidItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  plaidAccountId   String    @unique
+  name             String
+  officialName     String?
+  mask             String?
+  type             String
+  subtype          String?
+  currentBalance   Decimal?  @db.Decimal(19, 4)
+  availableBalance Decimal?  @db.Decimal(19, 4)
+  isoCurrencyCode  String?
+  updatedAt        DateTime  @updatedAt
+
+  transactions     Transaction[]
+  recurringStreams RecurringStream[]
+
+  @@index([itemId])
+}
+
+model Transaction {
+  id                    String          @id @default(uuid()) @db.Uuid
+  accountId             String          @db.Uuid
+  account               Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  plaidTransactionId    String          @unique
+  amount                Decimal         @db.Decimal(19, 4)
+  isoCurrencyCode       String?
+  date                  DateTime        @db.Date
+  authorizedDate        DateTime?       @db.Date
+  name                  String
+  merchantName          String?
+  pending               Boolean         @default(false)
+  paymentChannel        String?
+  plaidCategoryPrimary  String?
+  plaidCategoryDetailed String?
+  categoryId            String?         @db.Uuid
+  category              Category?       @relation(fields: [categoryId], references: [id])
+  categorySource        CategorySource?
+  raw                   Json
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+
+  @@index([accountId, date(sort: Desc)])
+  @@index([categoryId])
+}
+
+enum CategorySource {
+  plaid
+  rule
+  llm
+  user
+}
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId  String?  @db.Uuid
+  parent    Category? @relation("CategoryChildren", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryChildren")
+  name      String
+  slug      String
+  color     String?
+  icon      String?
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+  rules        Rule[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model Rule {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchType  MatchType
+  matchValue String
+  categoryId String    @db.Uuid
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  priority   Int       @default(0)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, priority(sort: Desc)])
+}
+
+enum MatchType {
+  merchant_exact
+  merchant_contains
+  name_regex
+}
+
+model WebhookEvent {
+  id                String     @id @default(uuid()) @db.Uuid
+  plaidItemId       String?    @db.Uuid
+  item              PlaidItem? @relation(fields: [plaidItemId], references: [id], onDelete: SetNull)
+  webhookType       String
+  webhookCode       String
+  payload           Json
+  signatureVerified Boolean
+  receivedAt        DateTime   @default(now())
+  processedAt       DateTime?
+  error             String?
+
+  @@index([plaidItemId])
+  @@index([processedAt])
+}
+
+model RecurringStream {
+  id                String     @id @default(uuid()) @db.Uuid
+  itemId            String     @db.Uuid
+  item              PlaidItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  accountId         String     @db.Uuid
+  account           Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  plaidStreamId     String     @unique
+  streamType        StreamType
+  description       String
+  merchantName      String?
+  category          String?
+  categoryDetailed  String?
+  frequency         String
+  firstDate         DateTime   @db.Date
+  lastDate          DateTime   @db.Date
+  predictedNextDate DateTime?  @db.Date
+  averageAmount     Decimal    @db.Decimal(19, 4)
+  lastAmount        Decimal?   @db.Decimal(19, 4)
+  isoCurrencyCode   String?
+  isActive          Boolean    @default(true)
+  status            String
+  updatedAt         DateTime   @updatedAt
+
+  @@index([itemId])
+  @@index([accountId])
+  @@index([streamType, isActive])
+}
+
+enum StreamType {
+  inflow
+  outflow
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  resourceId String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+}
